@@ -1,70 +1,83 @@
 import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { RootState } from '../../app/store.ts';
 import axiosApi from '../../axiosApi.ts';
 
+interface Task {
+  id: number;
+  title: string;
+  loading: boolean;
+}
+
 interface CounterState {
-  value: number;
+  value: Task[];
   isLoading: boolean;
   error: boolean;
 }
 
 const initialState: CounterState = {
-  value: 0,
+  value: [],
   isLoading: false,
   error: false,
 }
 
 export const fetchCounter = createAsyncThunk('counter/fetchCounter', async () => {
-  const {data: counter} = await axiosApi<number | null>('counter.json');
-  return counter || 0;
+  const response = await axiosApi.get('/counter');
+  return response.data;
 });
 
-export const changeCounterValue = createAsyncThunk<void, void, {state: RootState}>('counter/changeCounterValue', async (_arg,thunkAPI ) => {
-  const currentValueCOunterFromState = thunkAPI.getState().counter.value;
-  await axiosApi.put('counter.json', currentValueCOunterFromState + 1);
+
+export const changeCounterValue = createAsyncThunk('counter/changeCounterValue', async (title: string ) => {
+  const currentValueCounterFromState = await axiosApi.post('counter.json', {title, loading: false});
+  return currentValueCounterFromState.data;
 });
 
+export const deleteCounterValue = createAsyncThunk('counter/deleteCounterValue', async (valueId: number) => {
+  await axiosApi.delete(`/counter/${valueId}`);
+  return valueId;
+});
+
+export const switchCounter = createAsyncThunk('counter/switchCounter', async (valueId: number) => {
+  const response = await axiosApi.patch(`/counter/${valueId}`, (task) => ({
+    loading: !task.loading,
+  }));
+  return response.data;
+});
 export const counterSlice = createSlice({
   name: 'counter',
   initialState,
-  reducers: {
-    increase: (state) => {
-      state.value += 1;
-    },
-    increaseByNumber: (state, action: PayloadAction<number>) => {
-      state.value += action.payload;
-    },
-    decrease: (state) => {
-      state.value -= 1;
-    },
-  },
+  reducers: {},
   extraReducers: (builder) => {
     builder
       .addCase(fetchCounter.pending, (state) => {
         state.isLoading = true;
         state.error = false;
       })
-      .addCase(fetchCounter.fulfilled, (state, action) => {
-        state.isLoading = false;
+      .addCase(fetchCounter.fulfilled, (state, action: PayloadAction<Task[]>) => {
         state.value = action.payload;
+        state.isLoading = false;
       })
       .addCase(fetchCounter.rejected, (state) => {
-        state.isLoading = true;
-        state.error = true;
-      })
-      .addCase(changeCounterValue.pending, (state) => {
-        state.isLoading = true;
-        state.error = false;
-      })
-      .addCase(changeCounterValue.fulfilled, (state) => {
         state.isLoading = false;
       })
-      .addCase(changeCounterValue.rejected, (state) => {
-        state.isLoading = true;
-        state.error = true;
+      .addCase(changeCounterValue.fulfilled, (state, action: PayloadAction<Task>) => {
+        state.value.push(action.payload);
       })
+      .addCase(changeCounterValue.rejected, (state) => {
+        state.isLoading = false;
+      })
+      .addCase(deleteCounterValue.fulfilled, (state, action: PayloadAction<number>) => {
+        state.value = state.value.filter((task) => task.id !== action.payload);
+      })
+      .addCase(deleteCounterValue.rejected, (state) => {
+        state.isLoading = false;
+      })
+      .addCase(switchCounter.fulfilled, (state, action: PayloadAction<Task>) => {
+        const index = state.value.findIndex((task) => task.id === action.payload.id);
+          state.value[index] = action.payload;
+      })
+      .addCase(switchCounter.rejected, (state) => {
+        state.isLoading = false;
+      });
   }
 });
 
 export const counterReducer = counterSlice.reducer;
-export const {increase, decrease, increaseByNumber} = counterSlice.actions;
